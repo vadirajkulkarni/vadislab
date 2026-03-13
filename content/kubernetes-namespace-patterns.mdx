@@ -1,0 +1,200 @@
+---
+title: "How I Structure Kubernetes Namespaces for Multi-Team Platforms"
+date: "2026-03-13"
+description: "There's no universal right answer — but there are clearly wrong ones. Here's the model I've settled on after running multi-team clusters on GCP."
+---
+
+Every platform engineer eventually gets asked the same question by a new team onboarding to Kubernetes:
+
+> *"Where do we put our stuff?"*
+
+It sounds trivial. It isn't. The namespace model you pick early becomes load-bearing. It shapes your RBAC story, your network policy story, your cost attribution story, and how much operational pain you accumulate over the next two years.
+
+Here's the model I've settled on — and the two patterns I tried before it that didn't hold up.
+
+---
+
+## The three patterns (and their failure modes)
+
+### Pattern 1: One namespace per environment
+
+```
+prod/
+staging/
+dev/
+```
+
+This is what most teams reach for first because it mirrors how they think about environments. It works fine for three services. It falls apart at thirty.
+
+Every team's workloads are mixed together in the same namespace. RBAC becomes a nightmare — you end up granting teams more access than they need because isolating permissions per-service in a flat namespace is tedious. `kubectl get pods -n prod` returns 200 results from 15 different teams. Network policies become broad and hard to reason about. Cost attribution requires tag gymnastics.
+
+**The real problem:** the environment is not the unit of ownership. The team is.
+
+---
+
+### Pattern 2: One namespace per service
+
+```
+payments-api/
+payments-worker/
+checkout-api/
+checkout-frontend/
+...
+```
+
+This has the right ownership granularity but creates sprawl. A medium-sized org ends up with 80+ namespaces. Each namespace gets its own ResourceQuota, LimitRange, NetworkPolicy, and RBAC bindings — all of which you're managing. Cluster-level resource limits become hard to reason about. Operators and controllers that watch namespaces slow down. It's also confusing for engineers who work across multiple services and have to context-switch between namespaces constantly.
+
+**The real problem:** the service is too granular. It's the wrong unit of isolation.
+
+---
+
+### Pattern 3: Namespace per team per environment ✓
+
+This is the model I've converged on:
+
+```
+payments-prod/
+payments-staging/
+payments-dev/
+checkout-prod/
+checkout-staging/
+checkout-dev/
+```
+
+Naming convention: `{team}-{environment}`
+
+Each namespace is owned by exactly one team in exactly one environment. It gives you:
+
+- **Clean RBAC** — bind the team's group to their namespaces, nothing bleeds across teams
+- **Meaningful resource quotas** — quota per namespace means quota per team per env, which is how finance actually wants to slice it
+- **Network policies that make sense** — allow intra-team traffic within a namespace, require explicit policy for cross-team calls
+- **Fast `kubectl` UX** — `kubectl get pods -n payments-prod` returns only things that team owns
+
+---
+
+## What this looks like in practice
+
+### Namespace creation via Terraform
+
+I provision namespaces through Terraform rather than letting teams create them ad-hoc. This gives me a canonical record of what exists and enforces the naming convention:
+
+```hcl
+locals {
+  teams = ["payments", "checkout", "catalog", "notifications"]
+  envs  = ["prod", "staging", "dev"]
+}
+
+resource "kubernetes_namespace" "team_envs" {
+  for_each = {
+    for pair in setproduct(local.teams, local.envs) :
+    "${pair[0]}-${pair[1]}" => {
+      team = pair[0]
+      env  = pair[1]
+    }
+  }
+
+  metadata {
+    name = each.key
+    labels = {
+      team        = each.value.team
+      environment = each.value.env
+      managed-by  = "terraform"
+    }
+  }
+}
+```
+
+Labels matter here — they're used by ResourceQuotas, network policies, and Prometheus queries for cost attribution.
+
+### RBAC
+
+Each team gets a `ClusterRole` scoped to common developer actions, bound to their namespaces via `RoleBinding` (not `ClusterRoleBinding`):
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: payments-team-dev
+  namespace: payments-dev
+subjects:
+  - kind: Group
+    name: payments-team          # maps to your IdP group
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: developer
+  apiGroup: rbac.authorization.k8s.io
+```
+
+The `developer` ClusterRole covers `get/list/watch` on most resources and `create/update/delete` on Deployments, Services, ConfigMaps, and Secrets. Platform engineers get a separate role with broader access.
+
+This pattern means onboarding a new team is: add them to the Terraform locals, apply, done. No manual RBAC wiring.
+
+### ResourceQuotas
+
+Every namespace gets a quota. I set defaults at the team level and let teams request increases through a PR:
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: default-quota
+  namespace: payments-dev
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    count/pods: "40"
+```
+
+Dev namespaces get tighter quotas than staging/prod. This prevents someone's dev deployment from starving production workloads during a cluster resource crunch.
+
+### Network policies
+
+Default-deny ingress at the namespace level, then explicitly open what's needed:
+
+```yaml
+# Applied to every namespace at creation time
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+```
+
+Cross-team traffic (e.g. checkout calling payments) requires an explicit policy in the receiving namespace. This makes service dependencies visible and auditable rather than implicit.
+
+---
+
+## The exceptions
+
+**Shared infrastructure namespaces** sit outside this model:
+
+```
+monitoring/      # Prometheus, Grafana, AlertManager
+ingress/         # ingress-nginx or GKE Gateway
+cert-manager/
+argocd/
+kube-system/
+```
+
+These are platform-owned, not team-owned. Nobody outside the platform team gets write access here.
+
+**Ephemeral preview environments** are a special case too. For PR-based preview deploys I use a separate naming convention: `preview-{pr-number}`. They're created and destroyed by CI, with a short TTL enforced by a simple CronJob that culls namespaces older than 48 hours.
+
+---
+
+## What I'd change
+
+If I were starting from scratch today I'd make the team identifier in the namespace name match the GitHub team slug exactly. When they don't match you end up maintaining a mapping table somewhere, and that table always drifts.
+
+I'd also set `LimitRange` defaults from day one. Teams that don't set resource requests/limits on their containers cause unpredictable scheduling. A LimitRange that injects sensible defaults means you catch this at deploy time rather than during an incident.
+
+---
+
+The right namespace model is the one your team can reason about at 2am when something is on fire. Hopefully this one makes that slightly less miserable.
