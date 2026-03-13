@@ -11,20 +11,19 @@ export default function PostCard({ title, slug, description, date }: PostCardPro
   return (
     <Link
       href={`/blog/${slug}`}
-      className="block terminal-border p-4 hover:bg-[#0f0e00] transition-colors glow-hover"
+      className="group flex items-start justify-between gap-4 py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50 -mx-2 px-2 rounded-lg transition-colors duration-150"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <span className="dim text-xs">&gt; {slug}.mdx</span>
-          <h2 className="text-lg font-semibold mt-1">{title}</h2>
-          {description && (
-            <p className="dim text-sm mt-1">{description}</p>
-          )}
-        </div>
-        {date && (
-          <time className="dim text-xs whitespace-nowrap mt-1">{date}</time>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-900 group-hover:text-orange-600 transition-colors duration-150 mb-0.5">
+          {title}
+        </p>
+        {description && (
+          <p className="text-xs text-gray-400 truncate">{description}</p>
         )}
       </div>
+      {date && (
+        <time className="text-xs text-gray-400 whitespace-nowrap mt-0.5 shrink-0">{date}</time>
+      )}
     </Link>
   )
 }
