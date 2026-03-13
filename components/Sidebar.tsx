@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Home, BookOpen, User, Linkedin, Github, ExternalLink } from 'lucide-react'
+import Logo from './Logo'
 
 const NAV_ITEMS = [
   { href: '/',      label: 'Home',  Icon: Home },
@@ -23,9 +24,7 @@ export default function Sidebar() {
       <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-[220px] bg-white border-r border-gray-100 flex-col p-4 z-20">
         {/* Profile */}
         <div className="flex items-center gap-3 px-2 py-3 mb-4">
-          <div className="w-9 h-9 rounded-full bg-gray-900 flex items-center justify-center text-white text-xs font-bold shrink-0 select-none">
-            VK
-          </div>
+          <Logo size={36} />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-900 truncate">Vadiraj</p>
             <p className="text-xs text-gray-400 truncate">Platform Engineer</p>
@@ -78,7 +77,7 @@ export default function Sidebar() {
 
       {/* ── Mobile top bar ── */}
       <header className="lg:hidden sticky top-0 z-20 bg-white border-b border-gray-100 px-4 h-12 flex items-center justify-between">
-        <span className="text-sm font-semibold text-gray-900">Vadiraj Kulkarni</span>
+        <Logo size={28} />
         <nav className="flex items-center gap-4">
           {NAV_ITEMS.map(({ href, label }) => (
             <Link
