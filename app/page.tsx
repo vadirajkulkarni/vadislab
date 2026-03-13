@@ -6,7 +6,7 @@ import { Linkedin, Github, ArrowRight } from 'lucide-react'
 
 const SKILLS = [
   'GCP', 'Kubernetes', 'Terraform', 'Docker',
-  'Helm', 'ArgoCD', 'Prometheus', 'Grafana',
+  'FluzCD', 'Prometheus', 'Grafana',
   'Python', 'Bash', 'CI/CD', 'GitOps',
   'Linux', 'Pub/Sub', 'Cloud Run', 'Networking',
 ]
