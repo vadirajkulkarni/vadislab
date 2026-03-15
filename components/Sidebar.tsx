@@ -1,13 +1,14 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, BookOpen, User, Linkedin, Github, ExternalLink } from 'lucide-react'
+import { Home, BookOpen, User, Wrench, Linkedin, Github, ExternalLink } from 'lucide-react'
 import Logo from './Logo'
 
 const NAV_ITEMS = [
-  { href: '/',      label: 'Home',  Icon: Home },
-  { href: '/blog',  label: 'Blog',  Icon: BookOpen },
-  { href: '/about', label: 'About', Icon: User },
+  { href: '/',         label: 'Home',     Icon: Home },
+  { href: '/blog',     label: 'Blog',     Icon: BookOpen },
+  { href: '/projects', label: 'Projects', Icon: Wrench },
+  { href: '/about',    label: 'About',    Icon: User },
 ]
 
 const SOCIAL_LINKS = [
