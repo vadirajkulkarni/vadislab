@@ -4,7 +4,7 @@ import { ExternalLink } from 'lucide-react'
 const PROJECTS = [
   {
     name: 'ConvertPDF',
-    url: 'https://convertpdf.com',
+    url: 'https://convertpdf4u.com',
     description:
       'A free, browser-based tool to split, merge, compress, rotate, and convert PDF files — no sign-up required.',
     tags: ['PDF', 'Free Tool', 'Web App'],
